@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<meta name="referrer" content="no-referrer">
+<title>Masuk · Setwan DPRD Jatim</title>
+<style>
+:root{--bg:#f6f9fc;--surface:#fff;--ink:#0a2540;--muted:#425466;--line:#e3e8ee;--accent:#635bff;--err:#d92d20}
+@media (prefers-color-scheme:dark){:root{--bg:#0a1628;--surface:#112240;--ink:#f0f4fa;--muted:#adbdcc;--line:#22385a;--accent:#8b85ff;--err:#ff8a80}}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:grid;place-items:center;min-height:100vh;padding:16px;
+  background-image:radial-gradient(1200px 500px at 10% -10%,rgba(169,96,238,.35),transparent 60%),radial-gradient(900px 500px at 100% 0%,rgba(99,91,255,.35),transparent 60%)}
+.card{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:32px 28px;box-shadow:0 30px 60px -12px rgba(50,50,93,.25),0 18px 36px -18px rgba(0,0,0,.3)}
+.mark{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#a960ee,#635bff);display:grid;place-items:center;margin-bottom:18px}
+h1{font-size:21px;margin:0 0 4px;letter-spacing:-.01em}
+p.sub{margin:0 0 22px;color:var(--muted);font-size:14px;line-height:1.5}
+label{display:block;font-size:13px;font-weight:600;margin:14px 0 6px}
+input{width:100%;font:inherit;font-size:15px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--ink)}
+input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+button{margin-top:22px;width:100%;font:inherit;font-weight:600;font-size:15px;padding:12px;border:0;border-radius:10px;background:var(--accent);color:#fff;cursor:pointer}
+button:disabled{opacity:.6;cursor:progress}
+.err{color:var(--err);font-size:13px;min-height:18px;margin-top:12px}
+.foot{margin-top:18px;font-size:12px;color:var(--muted);text-align:center}
+</style>
+</head>
+<body>
+<form class="card" id="f" autocomplete="on">
+  <div class="mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M6 20V10M12 20V4M18 20v-7"/></svg></div>
+  <h1>Sekretariat DPRD Jatim</h1>
+  <p class="sub">Evaluasi Realisasi dan Perencanaan. Masukkan user dan password untuk membuka dashboard.</p>
+  <label for="u">User</label>
+  <input id="u" name="username" autocomplete="username" required autofocus>
+  <label for="p">Password</label>
+  <input id="p" name="password" type="password" autocomplete="current-password" required>
+  <button id="b" type="submit">Masuk</button>
+  <div class="err" id="e" role="alert"></div>
+  <div class="foot">Akses terbatas. Data terenkripsi.</div>
+</form>
+<script>
+(function () {
+  'use strict';
+  var ITER = 600000, SKEY = 'sdj-key';
+  var f = document.getElementById('f'), btn = document.getElementById('b'), err = document.getElementById('e');
+  var payload = null;
+  function load() { if (!payload) payload = fetch('payload.enc', { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw new Error('Gagal memuat data (' + r.status + ')'); return r.arrayBuffer(); }); return payload; }
+  load().catch(function () {});
+  function b64(buf) { var s = '', a = new Uint8Array(buf); for (var i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s); }
+  function unb64(s) { var b = atob(s), a = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; }
+  async function derive(user, pw, salt) {
+    var base = await crypto.subtle.importKey('raw', new TextEncoder().encode(user + '\n' + pw), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: salt, iterations: ITER }, base, { name: 'AES-GCM', length: 256 }, true, ['decrypt']);
+  }
+  async function open(key, buf) {
+    var iv = new Uint8Array(buf, 20, 12), ct = new Uint8Array(buf, 32);
+    var gz = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, ct);
+    var html = await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+    try { sessionStorage.setItem(SKEY, b64(await crypto.subtle.exportKey('raw', key))); } catch (e) {}
+    document.open(); document.write(html); document.close();
+  }
+  (async function auto() {
+    var k = null; try { k = sessionStorage.getItem(SKEY); } catch (e) {}
+    if (!k) return;
+    try { btn.disabled = true; btn.textContent = 'Membuka…'; var key = await crypto.subtle.importKey('raw', unb64(k), 'AES-GCM', true, ['decrypt']); await open(key, await load()); }
+    catch (e) { try { sessionStorage.removeItem(SKEY); } catch (x) {} btn.disabled = false; btn.textContent = 'Masuk'; }
+  })();
+  f.addEventListener('submit', async function (ev) {
+    ev.preventDefault(); err.textContent = '';
+    if (!window.crypto || !crypto.subtle || !window.DecompressionStream) { err.textContent = 'Browser tidak didukung. Gunakan Chrome, Edge, Firefox, atau Safari versi terbaru.'; return; }
+    btn.disabled = true; btn.textContent = 'Memeriksa…';
+    try {
+      var buf = await load();
+      var key = await derive(document.getElementById('u').value.trim(), document.getElementById('p').value, new Uint8Array(buf, 4, 16));
+      btn.textContent = 'Membuka…';
+      await open(key, buf);
+    } catch (e) {
+      err.textContent = (e && e.name === 'OperationError') ? 'User atau password salah.' : ((e && e.message) || 'Terjadi kesalahan.');
+      btn.disabled = false; btn.textContent = 'Masuk';
+      document.getElementById('p').select();
+    }
+  });
+})();
+</script>
+</body>
+</html>
